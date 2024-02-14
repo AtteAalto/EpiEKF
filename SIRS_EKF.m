@@ -1,4 +1,4 @@
-function [Z,E,X,Yest,Et] = SIRS_EKF(Y,pars)
+function [Z,E,X,Yest,Et,dn] = SIRS_EKF(Y,pars)
 
 % Rate for I -> R transition (often denoted by gamma)
 mu = pars.mu;
@@ -25,6 +25,8 @@ S_beta = (beta/2)^2;
 % Variance of daily change of beta
 Q_beta = pars.Q_beta;
 
+
+
 % State variables are: 
 % X(1): S(t),  
 % X(2): I(t),  
@@ -46,15 +48,22 @@ R = pars.Rcoef*Y*(1-pars.dn) + pars.Rcoef*N/1e5;
 % Model error term to scale up the Langevin covariance
 CC = pars.CC; 
 
-% Number of detected cases this week depends linearly on the true number of new
-% cases this week
-C0 = [0 0 pars.dn 0];
+dn = pars.dn*ones(1,Tlim);
 
 Yest = zeros(1,Tlim); %Storage for predicted number of new cases
 E = [0 0 0];
 Yres = Y(1);
-for jweek = 1:Tlim
+jweek = 0;
+Et = zeros(2,Tlim);
+while jweek < Tlim - .5
+%for jweek = 1:Tlim
     
+    jweek = jweek + 1;
+
+    % Number of detected cases this week depends linearly on the true number of new
+    % cases this week
+    C0 = [0 0 dn(jweek) 0];
+
     Xtemp = X(:,jweek);
     Xtemp(3) = 0;
     Phat = P;
@@ -113,7 +122,6 @@ for jweek = 1:Tlim
         Xtemp(1) = max(Xtemp(1),.3*N);
         Xtemp(2) = max(Xtemp(2),1);
         Xtemp(4) = max(Xtemp(4),.1*mu);
-        Xtemp(4) = min(Xtemp(4),3.5*mu);
         
         %Store the most recent available datapoint
         Yres = Y(jweek);
@@ -128,9 +136,27 @@ for jweek = 1:Tlim
 
     X(:,jweek+1) = Xtemp;
     
+    
+    if 2*Xtemp(4)/.2 - Xtemp(1)/N/.45 > 1     %   Xtemp(4) > .2 && Xtemp(1)/N < .45
+        ii = jweek-12:jweek-6;
+        ii = ii(ii>0);
+        dn(ii) = dn(ii).*(1+(pars.dnIncr-1)*(ii-(jweek-12))/6);
+
+        ii = jweek-5:jweek+15;
+        ii = ii(ii>0);
+        ii = ii(ii < Tlim+.5);
+        dn(ii) = pars.dnIncr*dn(ii);
+
+        ii = jweek+16:jweek+26;
+        ii = ii(ii < Tlim+.5);
+        dn(ii) = dn(ii).*(pars.dnIncr-(pars.dnIncr-1)*(ii-(jweek+16))/10);
+        
+        jweek = max(jweek-13,0);
+        %Yres = Y(max(jweek,1));
+    
     %Do the 4-week ahead projection (or less) every week for parameter
     %fitting purposes
-    if jweek < Tlim
+    elseif jweek < Tlim && jweek > 0
         
         Nfwd = min(Tlim-jweek,4);
         Xtemp(3) = 0;
@@ -149,24 +175,41 @@ for jweek = 1:Tlim
             Xtemp(4) = Xtemp(4);
             
             if mod(jj,7) == 0
-                Ytemp(jj/7) = dn*Xtemp(3);
+                Ytemp(jj/7) = dn(jweek)*Xtemp(3);
                 Xtemp(3) = 0;
             end
              
         end
         
+        
+        Xtemp(4) = min(Xtemp(4),3.5*mu);
+        
         %Store prediction errors
         Ycomp = Y(jweek+1:jweek+Nfwd);
-        Et(1,jweek) = sum((Ytemp(Ycomp>0)-Ycomp(Ycomp>0)).^2);
-        Et(2,jweek) = sum((Yres-Ycomp(Ycomp>0)).^2);
-        E(2) = E(2) + sum((Ytemp(Ycomp>0)-Ycomp(Ycomp>0)).^2);
-        E(3) = E(3) + sum((Yres-Ycomp(Ycomp>0)).^2);
+        
+        if Et(1,jweek) == 0
+            %Et(1,jweek) = sum(abs(Ytemp(Ycomp>0)-Ycomp(Ycomp>0)).^1);
+            %Et(2,jweek) = sum(abs(Yres-Ycomp(Ycomp>0)).^1);
+                        
+            Et(1,jweek) = sum(abs(Ytemp(Ycomp>=0)-Ycomp(Ycomp>=0))./(Ycomp(Ycomp>=0)+1).^.5);
+            Et(2,jweek) = sum(abs(Yres-Ycomp(Ycomp>=0))./(Ycomp(Ycomp>=0)+1).^.5);
+            
+            
+        end
+        
              
     end
-        
+         
 end
    
-E(1) = sum((Yest(Y>0)-Y(Y>0)).^2);
+E = sum(abs(Yest(Y>=0)-Y(Y>=0))./(Y(Y>=0)+1).^.5);
+
+
+
+%[X(1,end)/N*100 dn(end)/pars.dn]
+
+%plot(dn)
+%grid
 
 
 %% Projection for future
@@ -189,6 +232,8 @@ for jscen = 1:size(Z,1)
 
     %Initialise estimates with the final state of the EKF
     Xtemp = X([1 2 4],end);
+    Xtemp(1) = Xtemp(1) + coefs(jscen)*P(1,1)^.5;
+    
     
     %Store here the predicted daily case numbers
     Ypred = zeros(1,7*N_pred);
@@ -203,7 +248,7 @@ for jscen = 1:size(Z,1)
         StoI = max(Xtemp(3)+coefs(jscen)*cumerr^.5,0)*Xtemp(2)*Xtemp(1)/N;
         Xtemp(1) = Xtemp(1) - StoI; 
         Xtemp(2) = Xtemp(2) + StoI - mu*Xtemp(2);
-        Ypred(jj) = dn*StoI;
+        Ypred(jj) = dn(end)*StoI;
 
     end
     

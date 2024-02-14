@@ -34,6 +34,8 @@ pars.CC = 4^2;
 % Variance of daily change of beta
 pars.Q_beta = .012^2;
 
+pars.dnIncr = 1.05;
+
 % ===========================================================
 
 
@@ -48,8 +50,9 @@ end
 cal = sort(unique(Tdata.year_week));
 
 
+
 figure('Position',[0 0 1400 720])
-E4 = zeros(2,24);
+Eall = zeros(2,24);
 predWin = 10;
 quants = [0.010 0.025 0.050 0.100 0.150 0.200 0.250 0.300 0.350 0.400 0.450 0.500 ... 
 0.550 0.600 0.650 0.700 0.750 0.800 0.850 0.900 0.950 0.975 0.990];
@@ -76,6 +79,13 @@ for jc = 1:size(regionData,1)
     %Coefficient for measurement error variance. Optimised for each region.
     pars.Rcoef = regionData.Rcoef(jc);
     
+    
+    % The dn and Rcoef parameters are set like this using data until
+    % W5/2024. The coefficients 0.5 and 2 are optimised by minimising 
+    % sum(Eall(1,:)).
+    % pars.dn = .5*sum(Y)/length(Y)*52/pars.N; 
+    % pars.Rcoef = 2*mean((Y-movmean(Y,[2 2])).^2./movmean(Y+.0001,[2 2]));
+    
     % ===========================================================
 
     
@@ -93,27 +103,34 @@ for jc = 1:size(regionData,1)
     %Fill in missing data
     Y = fillData(Y);
     
+    %A big outlier in the data. No effect on the projections now, but for
+    %parameter tuning it should be fixed.
+    if jc == 24
+        Y(64) = Y(63);
+    end
+    
     %Edit here if you wish to go back in time and see how a projection
     %would look like
     Yfull = Y;
-    Y = Y(1:end-0);  %For example Y(1:end-4) to see how good the projection was 4 weeks ago
-    
+    Y = Y(1:end-0);  %For example Y(1:end-4) to see how the projection 4 weeks ago looked like
     
     %Run the method
-    [Z,E,X,Yest,Et] = SIRS_EKF(Y,pars);
-    
+    [Z,E,X,Yest,Et,dnEst] = SIRS_EKF(Y,pars);
+    E(2) = sum(Et(1,:));
+    E(3) = sum(Et(2,:));
     
     %Store and display results
     ii = find(Y>0);
     E0 = 0;
     for jw = ii(2:end)
         iaux = sum(ii < jw);
-        E0 = E0 + (Y(jw)-Y(ii(iaux)))^2;
+        E0 = E0 + abs(Y(jw)-Y(ii(iaux)))/(Y(ii(iaux))+1)^.5;
     end
-    E4(:,jc) = [E(2); E(3)];
+    Eall(:,jc) = [E(2); E(3)];
     e10 = floor(log(min([E(1) E0]))/log(10));
-    dnum(1) = E(2)/10^e10;
-    dnum(2) = E(3)/10^e10;
+    e20 = floor(log(min([E(2) E(3)]))/log(10));
+    dnum(1) = E(2)/10^e20;
+    dnum(2) = E(3)/10^e20;
     dnum(3) = E(1)/10^e10;
     dnum(4) = E0/10^e10;
     for jj = 1:4
@@ -128,6 +145,8 @@ for jc = 1:size(regionData,1)
     disp(['1-week ahead: ' d{3} d{4}])
     disp(['4-week ahead: ' d{1} d{2}])
         
+    
+    
     %figure;
     subplot(4,6,jc)
     hold on; grid on;
@@ -169,4 +188,27 @@ for jc = 1:size(regionData,1)
     Tout = [Tout; Tpred];
 end
    
+
+%sum(Eall(1,:))
+
+
+% figure('Position',[300 150 650 500])
+% subplot(4,1,[1 2])
+% plot(X(3,:)/pars.N)
+% hold on
+% plot(X(1,:)/pars.N)
+% grid
+% legend({'Weekly new cases / N','S(t) / N'},'Location','NorthWest','FontSize',11)
+% 
+% subplot(4,1,3)
+% plot(X(4,:).*X(1,:)/pars.N/pars.mu)
+% grid
+% legend({'R(t)'},'Location','NorthWest','FontSize',11)
+% 
+% subplot(4,1,4)
+% plot(dnEst)
+% grid
+% legend({'Dark number'},'Location','NorthWest','FontSize',11)
+% xlabel('Time (weeks)','FontSize',13)
+
 writetable(Tout,[forecastDate '-ItaLuxColab-EpiEKF.csv'])
