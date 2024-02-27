@@ -29,4 +29,4 @@ To be added...
 
  * A. Aalto, S. Martina, D. Proverbio, F. Kemp, P. Wilmes, J. Goncalves, A. Skupin. “Covid-19 report: Update on the current epidemic status in Luxembourg” (30 June 2022) [Link](https://www.researchluxembourg.org/en/covid-19-task-force/publications/).
 
- * D. Proverbio, F. Kemp, S. Magni, L. Ogorzaly, H.-M. Cauchie, J. Goncalves, A. Skupin, A. Aalto. “Model-based assessment of COVID-19 epidemic dynamics by wastewater analysis”, _Science of the Total Environment_ __827__, 154235, (2022), [doi.org/10.1016/j.scitotenv.2022.154235](doi.org/10.1016/j.scitotenv.2022.154235).
+ * D. Proverbio, F. Kemp, S. Magni, L. Ogorzaly, H.-M. Cauchie, J. Goncalves, A. Skupin, A. Aalto. “Model-based assessment of COVID-19 epidemic dynamics by wastewater analysis”, _Science of the Total Environment_ __827__, 154235, (2022), [doi.org/10.1016/j.scitotenv.2022.154235](https://doi.org/10.1016/j.scitotenv.2022.154235).
