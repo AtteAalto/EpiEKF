@@ -1,4 +1,4 @@
-function [Z,E,X,Yest,Et,dn] = SIRS_EKF(Y,pars)
+function [Zout,E,X,Yest,Et,dn] = SIRS_EKF(Y,pars)
 
 % Rate for I -> R transition (often denoted by gamma)
 mu = pars.mu;
@@ -43,11 +43,12 @@ P = [S_infected -S_infected 0 0;
     0 0 0 S_beta];
 
 % Measurement error variance (depends on the number of infected)
-R = pars.Rcoef*Y*(1-pars.dn) + pars.Rcoef*N/1e5;
+R = pars.Rcoef*Y*max(1-pars.dn,.2) + pars.Rcoef*N/1e5;
 
 % Model error term to scale up the Langevin covariance
 CC = pars.CC; 
 
+%Time series of the baseline dark number
 dn = pars.dn*ones(1,Tlim);
 
 Yest = zeros(1,Tlim); %Storage for predicted number of new cases
@@ -55,9 +56,7 @@ E = [0 0 0];
 Yres = Y(1);
 jweek = 0;
 Et = zeros(2,Tlim);
-while jweek < Tlim - .5
-%for jweek = 1:Tlim
-    
+while jweek < Tlim - .5   
     jweek = jweek + 1;
 
     % Number of detected cases this week depends linearly on the true number of new
@@ -133,11 +132,10 @@ while jweek < Tlim - .5
         %Missing data
         P = Phat;       
     end
-
     X(:,jweek+1) = Xtemp;
     
-    
-    if 2*Xtemp(4)/.2 - Xtemp(1)/N/.45 > 1     %   Xtemp(4) > .2 && Xtemp(1)/N < .45
+    %Adapt the dark number if state estimate becomes unrealistic
+    if 2*Xtemp(4)/.2 - Xtemp(1)/N/.45 > 1 
         ii = jweek-12:jweek-6;
         ii = ii(ii>0);
         dn(ii) = dn(ii).*(1+(pars.dnIncr-1)*(ii-(jweek-12))/6);
@@ -151,8 +149,7 @@ while jweek < Tlim - .5
         ii = ii(ii < Tlim+.5);
         dn(ii) = dn(ii).*(pars.dnIncr-(pars.dnIncr-1)*(ii-(jweek+16))/10);
         
-        jweek = max(jweek-13,0);
-        %Yres = Y(max(jweek,1));
+        jweek = max(jweek-12,0);
     
     %Do the 4-week ahead projection (or less) every week for parameter
     %fitting purposes
@@ -188,16 +185,16 @@ while jweek < Tlim - .5
         Ycomp = Y(jweek+1:jweek+Nfwd);
         
         if Et(1,jweek) == 0
-            %Et(1,jweek) = sum(abs(Ytemp(Ycomp>0)-Ycomp(Ycomp>0)).^1);
-            %Et(2,jweek) = sum(abs(Yres-Ycomp(Ycomp>0)).^1);
-                        
-            Et(1,jweek) = sum(abs(Ytemp(Ycomp>=0)-Ycomp(Ycomp>=0))./(Ycomp(Ycomp>=0)+1).^.5);
-            Et(2,jweek) = sum(abs(Yres-Ycomp(Ycomp>=0))./(Ycomp(Ycomp>=0)+1).^.5);
             
+            %Sq root
+            dif1 =  (Ytemp(Ycomp>=0)).^.5-(Ycomp(Ycomp>=0)).^.5;
+            dif2 = Yres^.5-(Ycomp(Ycomp>=0)).^.5;
+            
+            Et(1,jweek) = sum(abs(dif1));
+            Et(2,jweek) = sum(abs(dif2));
             
         end
-        
-             
+           
     end
          
 end
@@ -205,49 +202,58 @@ end
 E = sum(abs(Yest(Y>=0)-Y(Y>=0))./(Y(Y>=0)+1).^.5);
 
 
-
-%[X(1,end)/N*100 dn(end)/pars.dn]
-
-%plot(dn)
-%grid
-
-
 %% Projection for future
     
 % Length (weeks) of the prediction interval
-N_pred = 10;
+N_pred = 12;
 
 %Quantiles to simulate
 quants = [0.010 0.025 0.050 0.100 0.150 0.200 0.250 0.300 0.350 0.400 0.450 0.500 ... 
 0.550 0.600 0.650 0.700 0.750 0.800 0.850 0.900 0.950 0.975 0.990];
-quants = [quants, (quants(1:end-1)+quants(2:end))/2, .005 .995];
-quants = sort(quants,'ascend');
 
-%From quantiles to beta-coefficients
-coefs = 2^.5*erfinv(2*quants-1);
+%Number of stochastic replicates
+Nreps = 1000;
 
 %Simulate forward in time
-Z = zeros(length(quants),N_pred);
+Z = zeros(Nreps,N_pred);
+Pc = chol(P([1 2 4],[1 2 4]))';
 for jscen = 1:size(Z,1) 
 
+    rng(jscen)
+    
     %Initialise estimates with the final state of the EKF
     Xtemp = X([1 2 4],end);
-    Xtemp(1) = Xtemp(1) + coefs(jscen)*P(1,1)^.5;
-    
+    Xtemp = Xtemp + Pc*randn(3,1);
     
     %Store here the predicted daily case numbers
     Ypred = zeros(1,7*N_pred);
     
     %Initialise cumulative beta-error
-    cumerr = P(4,4);
     for jj = 1:7*N_pred
         
         %Cumulative error in the beta-parameter accounting for fluctuations
-        cumerr = cumerr + pars.Q_beta;
+        StoI = max(Xtemp(3)*Xtemp(2)*Xtemp(1)/N,0);
+        StoI = max(StoI + pars.CC^.5*StoI^.5*randn,0);
         
-        StoI = max(Xtemp(3)+coefs(jscen)*cumerr^.5,0)*Xtemp(2)*Xtemp(1)/N;
-        Xtemp(1) = Xtemp(1) - StoI; 
-        Xtemp(2) = Xtemp(2) + StoI - mu*Xtemp(2);
+        ItoR = max(mu*Xtemp(2),0);
+        ItoR = max(ItoR + pars.CC^.5*ItoR^.5*randn,0);
+        
+        %R to S transition is not modelled in the prediction, except
+        %through uncertainty
+        RtoS = phi*(N-Xtemp(1)-Xtemp(2));
+        RtoS = pars.CC^.5*RtoS^.5*randn;
+        
+        Xtemp(1) = Xtemp(1) - StoI + RtoS; 
+        Xtemp(2) = Xtemp(2) + StoI - ItoR;
+        Xtemp(3) = Xtemp(3) + pars.Q_beta^.5*randn;
+        
+        %Bounds for the solution
+        Xtemp(1) = max(Xtemp(1),.3*N);
+        Xtemp(2) = max(Xtemp(2),1);
+        Xtemp(3) = max(Xtemp(3),.1*mu);
+        Xtemp(3) = min(Xtemp(3),3.5*mu);
+        
+        
         Ypred(jj) = dn(end)*StoI;
 
     end
@@ -259,21 +265,18 @@ for jscen = 1:size(Z,1)
     
 end
 
-Ypred = Z((size(Z,1)+1)/2,:);
+%Add measurement error
+Z = Z + Z.^.5.*randn(size(Z));
+Z(Z<0) = 0;
+
+%For each week, find the prediction quantiles
 for jw = 1:size(Z,2)
     Z(:,jw) = sort(Z(:,jw),'ascend');
 end
-Z = Z(2:2:end,:);
 
-%Add measurement error
-for jscen = 1:size(Z,1)
-    Z(jscen,:) = Z(jscen,:) + coefs(jscen)*Ypred.^.5;
+Zout = zeros(length(quants),size(Z,2));
+for jq = 1:length(quants)
+    Zout(jq,:) = sum([1; 3; 3; 1].*Z(round(Nreps*quants(jq))-1:round(Nreps*quants(jq))+2,:))/8;
 end
 
-%No negative projections
-Z(Z<0) = 0;
 
-
-
-
-  
