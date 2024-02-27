@@ -15,6 +15,9 @@ Tdates = Tdates(strcmp(Tdates.is_latest,'True'),:);
 %Forecast date (should be Wednesday)
 forecastDate = Tdates.origin_date{1};
 
+%Optimised by random search
+Coef = [1.2143    1.312    0.6714];
+
 
 % ============   Region-independent parameters   ============
 
@@ -29,12 +32,13 @@ pars.mu = .06;
 pars.phi = log(2)/60;
 
 % Model error term to scale up the Langevin covariance
-pars.CC = 4^2;
+pars.CC = Coef(1)*4^2;
 
 % Variance of daily change of beta
 pars.Q_beta = .012^2;
 
-pars.dnIncr = 1.05;
+%Adjustment coefficient for the dark number
+pars.dnIncr = 1.2;
 
 % ===========================================================
 
@@ -50,10 +54,9 @@ end
 cal = sort(unique(Tdata.year_week));
 
 
-
 figure('Position',[0 0 1400 720])
 Eall = zeros(2,24);
-predWin = 10;
+predWin = 12;
 quants = [0.010 0.025 0.050 0.100 0.150 0.200 0.250 0.300 0.350 0.400 0.450 0.500 ... 
 0.550 0.600 0.650 0.700 0.750 0.800 0.850 0.900 0.950 0.975 0.990];
 Tout = table;
@@ -68,23 +71,22 @@ for jc = 1:size(regionData,1)
     % =============   Region-dependent parameters   =============
 
     %"Dark number", that is, ratio of detected and total cases. 
-    pars.dn = regionData.dn(jc);
+    pars.dn = Coef(2)*regionData.dn(jc);
     
     % "Effective" population size (accounting for heterogeneity & observation
     % bias). Optimal for Luxembourg (with covid) was determined to be 3.2e5,
-    % which is very close to half of the population. Therefore we will use
+    % which is very close to half of the population. Therefore we will u
     % Nfull/2 as the population size.
     pars.N = regionData.population(jc)/2;
     
     %Coefficient for measurement error variance. Optimised for each region.
-    pars.Rcoef = regionData.Rcoef(jc);
+    pars.Rcoef = Coef(3)*regionData.Rcoef(jc);
     
     
     % The dn and Rcoef parameters are set like this using data until
-    % W5/2024. The coefficients 0.5 and 2 are optimised by minimising 
-    % sum(Eall(1,:)).
-    % pars.dn = .5*sum(Y)/length(Y)*52/pars.N; 
-    % pars.Rcoef = 2*mean((Y-movmean(Y,[2 2])).^2./movmean(Y+.0001,[2 2]));
+    % W5/2024.
+    % pars.dn = sum(Y)/length(Y)*52/pars.N; 
+    % pars.Rcoef = mean((Y-movmean(Y,[2 2])).^2./movmean(Y+.0001,[2 2]));
     
     % ===========================================================
 
@@ -98,14 +100,30 @@ for jc = 1:size(regionData,1)
             Y(jw) = Yraw(ii);
         end
     end
-    Y = Y(min(find(Y>0)):length(Y));
     
-    %Fill in missing data
+    
+    
+    %Exclude missing data from the beginning and the end. Prediction window
+    %will be shifted ahead for those countries where data is missing from
+    %the end.
+    missingFromEnd = length(Y) - max(find(Y>=0));
+    Y = Y(min(find(Y>0)):length(Y)-missingFromEnd);
+    if missingFromEnd > 0
+        if missingFromEnd > 8
+            disp('More than 8 data points missing from the end. Country excluded from projections.')
+        else
+            disp(['Note: ' num2str(missingFromEnd) ' data points missing from the end'])
+        end
+    end
+     
+    
+    %Fill in other missing data
     Y = fillData(Y);
+   
     
-    %A big outlier in the data. No effect on the projections now, but for
-    %parameter tuning it should be fixed.
-    if jc == 24
+    %A big outlier in the data for SK. No effect on the projections now, 
+    %but for parameter tuning it should be fixed.
+    if strcmp(regionData.countryCode{jc},'SK')
         Y(64) = Y(63);
     end
     
@@ -116,10 +134,10 @@ for jc = 1:size(regionData,1)
     
     %Run the method
     [Z,E,X,Yest,Et,dnEst] = SIRS_EKF(Y,pars);
-    E(2) = sum(Et(1,:));
-    E(3) = sum(Et(2,:));
     
     %Store and display results
+    E(2) = sum(Et(1,:));
+    E(3) = sum(Et(2,:));
     ii = find(Y>0);
     E0 = 0;
     for jw = ii(2:end)
@@ -148,14 +166,19 @@ for jc = 1:size(regionData,1)
     
     
     %figure;
-    subplot(4,6,jc)
+    subplot(4,8,jc)
     hold on; grid on;
     Cin = 1e5/regionData.population(jc);
     fill([length(Yest):length(Yest)+predWin fliplr(length(Yest):length(Yest)+predWin)],Cin*[Y(end) Z(2,1:predWin) fliplr([Y(end) Z(22,1:predWin)])],[1 .87 .87],'EdgeColor','none')
     fill([length(Yest):length(Yest)+predWin fliplr(length(Yest):length(Yest)+predWin)],Cin*[Y(end) Z(7,1:predWin) fliplr([Y(end) Z(17,1:predWin)])],[1 .96 .96],'EdgeColor','none')
 
     plot(Cin*Y,'LineWidth',1,'Color',[0 0.4470 0.7410])
-    plot(length(Y),Cin*Y(end),'ok','MarkerFaceColor','k','MarkerSize',4)
+    %plot(length(Y),Cin*Y(end),'sk','MarkerFaceColor','k','MarkerSize',4)
+    
+    if missingFromEnd < 8.5
+        plot(length(Yest)+missingFromEnd + (1:4),Cin*Z(12,(1:4)+missingFromEnd),'ok','MarkerFaceColor','k','MarkerSize',3)
+    end
+    
     plot(Cin*Yfull,'LineWidth',1,'Color',[0 0.4470 0.7410])
     plot(length(Yest):length(Yest)+predWin, Cin*[Y(end) Z(12,1:predWin)],'k','LineWidth',1)
     title(regionData.countryCode{jc},'FontSize',14)
@@ -163,52 +186,54 @@ for jc = 1:size(regionData,1)
     xlim([length(Y)-10 length(Y)+predWin])
  
     
-    %Create the output table for the region
-    Tpred = table;
-    Tpred.target = repmat({'ILI incidence'},[92 1]);
-    clear('Tloc','Tor','Ttarg','Ttype')
-    for jr = 1:92
-        Tloc{jr,1} =  regionData.countryCode{jc};
-        Tor{jr,1} = forecastDate;
-        Ttarg{jr,1} = Tdates.target_end_date{Tdates.horizon==floor((jr-.001)/23)+1};
-        Ttype{jr,1} = num2str(quants(1+mod(jr-1,23)));
+    if missingFromEnd < 8.5
+        %Create the output table for the region
+        Tpred = table;
+        Tpred.target = repmat({'ILI incidence'},[92 1]);
+        clear('Tloc','Tor','Ttarg','Ttype')
+        for jr = 1:92
+            Tloc{jr,1} =  regionData.countryCode{jc};
+            Tor{jr,1} = forecastDate;
+            Ttarg{jr,1} = Tdates.target_end_date{Tdates.horizon==floor((jr-.001)/23)+1};
+            Ttype{jr,1} = num2str(quants(1+mod(jr-1,23)));
+        end
+        Tpred.location = Tloc;
+        Tpred.origin_date = Tor;
+        Tpred.target_end_date = Ttarg;
+        Tpred.output_type_id = Ttype;
+        Tpred.horizon = [ones(23,1); 2*ones(23,1); 3*ones(23,1); 4*ones(23,1)];
+        Tpred.output_type = repmat({'quantile'},[92 1]);
+        Tpred.value = vec(Z(:,missingFromEnd+(1:4))/regionData.population(jc)*1e5);
+        Tpred = [Tpred; Tpred(strcmp(Tpred.output_type_id,'0.5'),:)];
+        Tpred.output_type(93:96) = repmat({'median'},[4 1]);
+        Tpred.output_type_id(93:96) = repmat({''},[4 1]);
+
+        %Concatenate all results into one table
+        Tout = [Tout; Tpred];
     end
-    Tpred.location = Tloc;
-    Tpred.origin_date = Tor;
-    Tpred.target_end_date = Ttarg;
-    Tpred.output_type_id = Ttype;
-    Tpred.horizon = [ones(23,1); 2*ones(23,1); 3*ones(23,1); 4*ones(23,1)];
-    Tpred.output_type = repmat({'quantile'},[92 1]);
-    Tpred.value = vec(Z(:,1:4)/regionData.population(jc)*1e5);
-    Tpred = [Tpred; Tpred(strcmp(Tpred.output_type_id,'0.5'),:)];
-    Tpred.output_type(93:96) = repmat({'median'},[4 1]);
-    Tpred.output_type_id(93:96) = repmat({''},[4 1]);
-    
-    %Concatenate all results into one table
-    Tout = [Tout; Tpred];
 end
    
 
-%sum(Eall(1,:))
+sum(Eall(1,:))
 
 
-% figure('Position',[300 150 650 500])
-% subplot(4,1,[1 2])
-% plot(X(3,:)/pars.N)
-% hold on
-% plot(X(1,:)/pars.N)
-% grid
-% legend({'Weekly new cases / N','S(t) / N'},'Location','NorthWest','FontSize',11)
-% 
-% subplot(4,1,3)
-% plot(X(4,:).*X(1,:)/pars.N/pars.mu)
-% grid
-% legend({'R(t)'},'Location','NorthWest','FontSize',11)
-% 
-% subplot(4,1,4)
-% plot(dnEst)
-% grid
-% legend({'Dark number'},'Location','NorthWest','FontSize',11)
-% xlabel('Time (weeks)','FontSize',13)
+figure('Position',[300 150 650 500])
+subplot(4,1,[1 2])
+plot(X(3,:)/pars.N)
+hold on
+plot(X(1,:)/pars.N,'LineWidth',1)
+grid
+legend({'Weekly new cases / N / C_{base}','S(t) / N'},'Location','NorthWest','FontSize',11)
+
+subplot(4,1,3)
+plot(X(4,:).*X(1,:)/pars.N/pars.mu,'LineWidth',1)
+grid
+legend({'R(t)'},'Location','NorthWest','FontSize',11)
+
+subplot(4,1,4)
+plot(dnEst,'LineWidth',1)
+grid
+legend({'Dark number'},'Location','NorthWest','FontSize',11)
+xlabel('Time (weeks)','FontSize',13)
 
 writetable(Tout,[forecastDate '-ItaLuxColab-EpiEKF.csv'])
