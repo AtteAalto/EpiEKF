@@ -1,6 +1,14 @@
 # EpiEKF
 
-Code for the EpiEKF method (SIRS model coupled with EKF) used for the [Respicast](https://respicast.ecdc.europa.eu/) hub. It is adapted from a method used for midterm projections within the Covid-19 task force in Luxembourg ([Aalto et al., 2022](#references)).
+__Atte Aalto__<sup>1</sup>, __Daniele Proverbio__<sup>2</sup>, __Giulia Giordano__<sup>2</sup>, and __Jorge Goncalves__<sup>1</sup>
+
+  1. Luxembourg Centre for Systems Biomedicine, University of Luxembourg  
+  2. University of Trento
+
+#
+
+This is the code for the EpiEKF method (SIRS model coupled with EKF) used for ILI incidence projections for the [Respicast](https://respicast.ecdc.europa.eu/) hub. It is adapted from a method used for midterm projections within the Covid-19 task force in Luxembourg ([Aalto et al., 2022](#references)).
+
 
 ## Instructions
 
