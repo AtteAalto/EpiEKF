@@ -20,21 +20,22 @@ This is the code for the EpiEKF method (SIRS model coupled with EKF) used for IL
 
  - To inspect past projections, simply truncate the data vector `Y` while the full data is stored in the vector `Yfull`.
  - Note that if a new country is added, an error will be generated.
+ - If most recent data are missing for a country, the prediction window is shifted accordingly. If data is missing from more than 8 most recent weeks, the country will be excluded from the output file.
 
 ## Model details
 
 The model is a stochastic SIRS model (discrete-time with time step of 1 day) 
 
-$S(t+1) = S(t) - \frac{\beta(t)I(t)}{N}S(t) + \varphi R(t) - \sqrt{\frac{\beta(t)I(t)}{N}S(t)}w_1(t) + \sqrt{\varphi R(t)} w_3(t)$
+$S(t+1) = S(t) - \frac{\beta(t)I(t)}{N}S(t) + \varphi R(t) - \sqrt{\frac{\beta(t)I(t)S(t)}{N}}w_1(t) + \sqrt{\varphi R(t)} w_3(t)$
 
-$I(t+1) = I(t) + \frac{\beta(t)I(t)}{N}S(t) - \mu I(t) + \sqrt{\frac{\beta(t)I(t)}{N}S(t)}w_1(t) - \sqrt{\mu I(t)} w_2(t)$
+$I(t+1) = I(t) + \frac{\beta(t)I(t)}{N}S(t) - \mu I(t) + \sqrt{\frac{\beta(t)I(t)S(t)}{N}}w_1(t) - \sqrt{\mu I(t)} w_2(t)$
 
 $R(t+1) = R(t) + \mu I(t) - \varphi R(t) + \sqrt{\mu I(t)} w_2(t) - \sqrt{\varphi R(t)} w_3(t)$
 
 where $w_1$, $w_2$ and $w_3$ are mutually independent discrete-time white noise processes with variance 1. The stochastic model is derived by accompanying each state transition by a stochastic process. For example, in the deterministic model, $\beta(t)S(t)I(t)/N$ infections occur on day $t$. In the stochastic version, the number of new infections is normally distributed with mean $\beta(t)S(t)I(t)/N$ and variance $\beta(t)S(t)I(t)/N$. This stochastic formalisation arises from the assumption that on day $t$, each susceptible person has the probability $p(t)=\beta(t)I(t)/N$ to become infected. Then, the number of new infections is binomially distributed with mean $S(t)p(t)$ and variance $S(t)p(t)(1-p(t))$. Since $p(t)$ is rather small, the term $(1-p(t))$ is omitted from the variance. Moreover, with high enough number of new infections, the binomial distribution can be well approximated by the normal distribution. 
 
 The weekly number of detected cases according to the deterministic part of the model (which is used for the Kalman filtering) is
-$y(t) = C(t) \sum_{\tau = t-6,...,t} \frac{\beta(t)I(t)}{N}S(t)$
+$y(t) = C(t) \sum_{\tau = t-6,...,t} \frac{\beta(\tau)I(\tau)S(\tau)}{N}$
 where $C(t)$ is the time-varying (as explained below) ratio of detected and total infections.
 
 ### State estimation and future projections
@@ -49,7 +50,7 @@ A key parameter affecting the quality of projections is the ratio of detected an
 
 Here we list the parameters of the model, and region-dependent hyperparameters. In this section, we denote by $Y_j$ the vector of length $m$ containing the weekly case numbers four country $j$. In the method, there are three global parameters $a$, $b$, and $c$ that modulate local parameters that depend on the historical data. These three parameters are fitted by optimising over all 24 regions available at the end of Jan 2024. The cost function for the optimisation is
 
-$J(a,b,c) = \sum_{j=1,...,24} \sum_{t=1,...,m-4} \sum_{\tau = 1,2,3,4} \frac{|\sqrt{Y_j(t+\tau)} - \sqrt{\hat Y_j(t+\tau|t)}|}{\sqrt{Y_j(t+\tau)+1}}$
+$J(a,b,c) = \sum_{j=1,...,24} \sum_{t=1,...,m-4} \sum_{\tau = 1,2,3,4} \frac{\left|\sqrt{Y_j(t+\tau)} - \sqrt{\hat Y_j(t+\tau|t)}\right|}{\sqrt{Y_j(t+\tau)+1}}$
 
 where $\tau$ is the projection horizon, that is, $\hat Y_j(t+\tau|t)$ stands for the modelled case numbers for day $t+\tau$ using data until day $t$. The square root is used as a variance-stabilising transformation. Without this transformation, too much emphasis is put on the overshooting tendency of the projections, which results in rather optimistic projections for the majority of time.
 
@@ -63,7 +64,7 @@ where $\tau$ is the projection horizon, that is, $\hat Y_j(t+\tau|t)$ stands for
 
  - The baseline for the ratio of detected and total cases is $b\frac{52 \sum_{t=1,...,m} Y(t)}{mN}$, that is, number of detected cases per capita per year multiplied by the tuning parameter $b$.
 
-- The measurement noise variance for region $j$ on day $t$ is $c K_j Y_j(t)$ where $c$ is the global tuning parameter, and $K_j$ is obtained by $K_j = 1/m \sum_{t=1,...,m} (Y(t) - Y_s(t))^2 / Y_s(t)$ where $Y_s$ is a moving window average of $Y$ (over $t-2,…,t+2$).
+- The measurement noise variance for region $j$ on day $t$ is $c K_j Y_j(t)$ where $c$ is the global tuning parameter, and $K_j$ is obtained by $K_j = 1/m \sum_{t=1,...,m} (Y(t) - Y_s(t))^2 / Y_s(t)$ where $Y_s$ is a 5-week moving window average of $Y$ (over $t-2,…,t+2$).
 
 
 
