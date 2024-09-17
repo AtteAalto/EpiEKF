@@ -20,7 +20,7 @@ This is the code for the EpiEKF method (SIRS model coupled with EKF) used for IL
 
  - To inspect past projections, simply truncate the data vector `Y` while the full data is stored in the vector `Yfull`.
  - Note that if a new country is added, an error will be generated.
- - If most recent data are missing for a country, the prediction window is shifted accordingly. If data is missing from more than 8 most recent weeks, the country will be excluded from the output file.
+ - If most recent data are missing for a country, the prediction window is shifted accordingly. If data are missing from more than 8 most recent weeks, the country will be excluded from the output file.
 
 ## Model details
 
@@ -44,15 +44,15 @@ Details on the EKF implementation on such a model can be found in ([Proverbio et
 
 ### Adaptive hyperparameter estimation
 
-A key parameter affecting the quality of projections is the ratio of detected and total cases $C(t)$. In particular, the link between the exponential growth rate at the onset of a new epidemic wave and the amplitude of the wave is strongly dependent on this parameter. With too large parameter, the projections will overshoot the wave, and conversely, with too small parameter, the projections are too optimistic. Unfortunately, one parameter rarely works for every epidemic wave in a region. Therefore we have implemented an adaptive scheme to retroactively adjust this hyperparameter. This estimation works so that if $10\beta(t)-S(t)/(0.45N) > 1$, that is, if $\beta$-parameter becomes too large and/or the susceptible-pool becomes too small, then the state estimate is deemed unrealistic. The simulation then jumps backwards in time for 12 weeks, and re-runs the last 12 weeks with $C(t)$ increased by 20% (in a piecewise linear way). 26 weeks after the adjustment was made, $C(t)$ has again returned to the baseline value. 
+A key parameter affecting the quality of projections is the ratio of detected and total cases $C(t)$. In particular, the link between the exponential growth rate at the onset of a new epidemic wave and the amplitude of the wave is strongly dependent on this parameter. With too large parameter, the projections will overshoot the wave, and conversely, with too small parameter, the projections become too optimistic. Unfortunately, one parameter rarely works for every epidemic wave in a region. Therefore we have implemented an adaptive scheme to retroactively adjust this hyperparameter. This estimation works so that if $10\beta(t)-S(t)/(0.45N) > 1$, that is, if $\beta$-parameter becomes too large and/or the susceptible-pool becomes too small, then the state estimate is deemed unrealistic. The simulation then jumps backwards in time for 12 weeks, and re-runs the last 12 weeks with $C(t)$ increased by 20% (in a piecewise linear way). 26 weeks after the adjustment was made, $C(t)$ has again returned to the baseline value in anticipation of the next epidemic season. 
 
 ### Method parameters
 
-Here we list the parameters of the model, and region-dependent hyperparameters. In this section, we denote by $Y_j$ the vector of length $m$ containing the weekly case numbers four country $j$. In the method, there are three global parameters $a$, $b$, and $c$ that modulate local parameters that depend on the historical data. These three parameters are fitted by optimising over all 24 regions available at the end of Jan 2024. The cost function for the optimisation is
+Here we list the parameters of the model, and region-dependent hyperparameters. In this section, we denote by $Y_j$ the vector of length $m$ containing the weekly case numbers four country $j$. In the method, there are three global parameters $a$, $b$, and $c$ that modulate local parameters that depend on the historical data. These three parameters are fitted by optimising over all 24 regions available through the Respicast hub at the end of Jan 2024. The cost function for the optimisation is
 
 $J(a,b,c) = \sum_{j=1,...,24} \sum_{t=1,...,m-4} \sum_{\tau = 1,2,3,4} \frac{\left|\sqrt{Y_j(t+\tau)} - \sqrt{\hat Y_j(t+\tau|t)}\right|}{\sqrt{Y_j(t+\tau)+1}}$
 
-where $\tau$ is the projection horizon, that is, $\hat Y_j(t+\tau|t)$ stands for the modelled case numbers for day $t+\tau$ using data until day $t$. The square root is used as a variance-stabilising transformation. Without this transformation, too much emphasis is put on the overshooting tendency of the projections, which results in rather optimistic projections for the majority of time.
+where $\tau$ is the projection horizon, that is, $\hat Y_j(t+\tau|t)$ stands for the modelled case numbers for week $t+\tau$ using data until week $t$. The square root is used as a variance-stabilising transformation. Without this transformation, too much emphasis is put on the overshooting tendency of the projections, which results in rather optimistic projections for the majority of time.
 
  - Rate for transition $I \to R$, $\mu = 0.06$. It is unrealistically small, but to guarantee stable state estimation, the time scale of the model dynamics should not be too far from the time scale of data collection (one week).
 
