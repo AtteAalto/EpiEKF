@@ -7,12 +7,14 @@ __Atte Aalto__<sup>1</sup>, __Daniele Proverbio__<sup>2</sup>, __Giulia Giordano
 
 #
 
+__NOTE: This version was used for Respicast in the 2023-2024 season. For the 2024-2025 season, the model has been updated somewhat. In particular, the adaptive hyperparameter estimation scheme has been modified. Details will be published later.__
+
 This is the code for the EpiEKF method (SIRS model coupled with EKF) used for ILI incidence projections for the [Respicast](https://respicast.ecdc.europa.eu/) hub. It is adapted from a method used for midterm projections within the Covid-19 task force in Luxembourg ([Aalto et al., 2022](#references)).
 
 
 ## Instructions
 
- - Download files [_latest-ILI_incidence.csv_](https://github.com/european-modelling-hubs/flu-forecast-hub/blob/main/target-data/latest-ILI_incidence.csv) and [_forecasting_weeks.csv_](https://github.com/european-modelling-hubs/flu-forecast-hub/blob/main/supporting-files/forecasting_weeks.csv) from the [flu forecast hub](https://github.com/european-modelling-hubs/flu-forecast-hub) github page.
+ - Download files [_latest-ILI_incidence.csv_](https://github.com/european-modelling-hubs/RespiCast-SyndromicIndicators/blob/main/target-data/latest-ILI_incidence.csv) and [_forecasting_weeks.csv_](https://github.com/european-modelling-hubs/RespiCast-SyndromicIndicators/blob/main/supporting-files/forecasting_weeks.csv) from the [RespiCast-SyndromicIndicators](https://github.com/european-modelling-hubs/RespiCast-SyndromicIndicators) github page.
  - Run the file `SIRS_EKF_main.m`
  - Output csv file in the required format will be generated and the most recent projections plotted
 
