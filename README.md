@@ -7,7 +7,7 @@ __Atte Aalto__<sup>1</sup>, __Daniele Proverbio__<sup>2</sup>, __Giulia Giordano
 
 #
 
-__NOTE: This version was used for Respicast in the 2023-2024 season. For the 2024-2025 season, the model has been updated somewhat. In particular, the adaptive hyperparameter estimation scheme has been modified. Details will be published later.__
+__NOTE: This version was used for Respicast in the 2023-2024 season. For the 2024-2025 season, the model has been updated somewhat. In particular, the adaptive hyperparameter estimation scheme has been modified. The new code is in a new repository [here](https://gitlab.com/uniluxembourg/lcsb/systems-control/epinetekf).__
 
 This is the code for the EpiEKF method (SIRS model coupled with EKF) used for ILI incidence projections for the [Respicast](https://respicast.ecdc.europa.eu/) hub. It is adapted from a method used for midterm projections within the Covid-19 task force in Luxembourg ([Aalto et al., 2022](#references)).
 
